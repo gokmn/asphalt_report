@@ -1,1 +1,75 @@
 
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from datetime import datetime
+import io
+
+# 1. Veriyi Oku
+# Yüklenen CSV dosyasını okuyoruz. Başlıklardaki alt satıra geçişleri (\n) temizliyoruz.
+# Düzeltme: Dosya deneme.xlsx'dir ve Excel dosyasıdır, bu yüzden pd.read_excel kullanıldı.
+# Sayfa adı 'Sayfa1' olarak belirtildi.
+df = pd.read_excel('deneme.xlsx', sheet_name='Sayfa1')
+df.columns = [c.replace('\n', ' ').strip() for c in df.columns]
+
+# Debug: Print column names to identify the correct ones
+print('DataFrame Columns:', df.columns.tolist())
+
+# 2. Tarih ve Saat Birleştirme
+# 'Date 2éme pesée' ve 'Heure 2éme pesée' sütunlarını birleştirip datetime formatına çeviriyoruz.
+# CSV'deki format: YYYY-MM-DD ve HH:MM:SS
+df['ZamanDamgasi'] = pd.to_datetime(df['Date  2éme  pesée'].astype(str) + ' ' + df['Heure  2éme pesée'].astype(str))
+
+# Zaman sırasına göre diz (Eskiden yeniye)
+df = df.sort_values('ZamanDamgasi')
+
+# 3. Hesaplamalar
+# Kümülatif (Birikimli) üretim tonajı
+df['KumulatifTonaj'] = df['Poids Net'].cumsum()
+
+# Her kamyon arasındaki süre farkı (Dakika cinsinden)
+df['BeklemeSuresi_Dk'] = df['ZamanDamgasi'].diff().dt.total_seconds() / 60
+
+# Kritik Duruşlar: 30 dakikadan fazla bekleme olan satırlar
+kritik_duruslar = df[df['BeklemeSuresi_Dk'] > 30]
+
+# 4. Grafik Çizimi
+plt.figure(figsize=(12, 7))
+
+# Ana Çizgi (Mavi): Üretim İlerlemesi
+plt.plot(df['ZamanDamgasi'], df['KumulatifTonaj'], marker='o', markersize=4, linestyle='-', color='#1f77b4', label='Üretim (Kümülatif)')
+
+# Kırmızı X İşaretleri: 30 dk üzeri beklemeler
+if not kritik_duruslar.empty:
+    plt.scatter(kritik_duruslar['ZamanDamgasi'], kritik_duruslar['KumulatifTonaj'],
+                color='red', marker='x', s=150, zorder=5, label='Bekleme (>30dk)')
+
+    # Süreleri yanına yazdır (Örn: 01:15)
+    for idx, row in kritik_duruslar.iterrows():
+        saat = int(row['BeklemeSuresi_Dk'] // 60)
+        dakika = int(row['BeklemeSuresi_Dk'] % 60)
+        sure_txt = f"{saat:02}:{dakika:02}"
+
+        # Yazıyı grafiğin üzerine dik şekilde ekle
+        plt.text(row['ZamanDamgasi'], row['KumulatifTonaj'] + (df['KumulatifTonaj'].max()*0.02),
+                 sure_txt, color='red', rotation=90, fontsize=9, fontweight='bold', ha='center')
+
+# Eksen ve Başlık Ayarları
+plt.title(f"Günlük Üretim ve Duruş Analizi ({df['Date  2éme  pesée'].iloc[0]})", fontsize=14)
+plt.ylabel("Kümülatif Tonaj (Ton)", fontsize=12)
+plt.xlabel("Saat", fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.6)
+
+# X Ekseni Saat Formatı (Sadece saat ve dakikayı göster)
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+plt.xticks(rotation=45)
+
+plt.legend()
+plt.tight_layout()
+
+# Grafiği göster
+plt.show()
+     
+DataFrame Columns: ['N°  Ticket', 'Matricule  Camion', 'Moyens transport', 'Fournisseur', 'Client', 'Produit', 'Date  1ére  pesée', 'Heure  1ére pesée', '1ére  Pesée', 'Etat  1ére pesée', 'Date  2éme  pesée', 'Heure  2éme pesée', '2éme  pesée', 'Etat  2éme  pesée', 'Poids Net']
+
